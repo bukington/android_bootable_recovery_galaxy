@@ -23,7 +23,7 @@ LOCAL_MODULE := recovery
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 
-RECOVERY_API_VERSION := V6.0
+RECOVERY_API_VERSION := V6.5
 LOCAL_CFLAGS += -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSION)
 
 # This binary is in the recovery ramdisk, which is otherwise a copy of root.
@@ -59,6 +59,7 @@ include $(commands_recovery_local_path)/mtdutils/Android.mk
 include $(commands_recovery_local_path)/tools/Android.mk
 include $(commands_recovery_local_path)/edify/Android.mk
 include $(commands_recovery_local_path)/updater/Android.mk
+include $(commands_recovery_local_path)/applypatch/Android.mk
 commands_recovery_local_path :=
 
 endif   # TARGET_ARCH == arm

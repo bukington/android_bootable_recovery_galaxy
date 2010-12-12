@@ -48,12 +48,20 @@
 #define MENU_HINT "Use up/down to highlight;", \
              "OK to select", \
              ""
+             
+#define PSFREEDOM 1
 
 static const struct option OPTIONS[] = {
   { "send_intent", required_argument, NULL, 's' },
   { "update_package", required_argument, NULL, 'u' },
+  { "update_gapps", required_argument, NULL, 'g' },
   { "wipe_data", no_argument, NULL, 'w' },
   { "wipe_cache", no_argument, NULL, 'c' },
+  { "wipe_full", no_argument, NULL, 'a' },
+  { "nandroid", no_argument, NULL, 'n' },
+  { "reboot", no_argument, NULL, 'r' },
+  { "hello", no_argument, NULL, 'h' },
+  { "migrate", no_argument, NULL, 'm' },
 };
 
 static const char *COMMAND_FILE = "CACHE:recovery/command";
@@ -137,6 +145,10 @@ static int do_reboot = 1;
 #define SDTOOLS "/tmp/RECTOOLS/sdtools.sh"
 #define FIX_PERMS_BIN "/tmp/RECTOOLS/fix_permissions.sh"
 #define BACKUP_DATA_BIN "/tmp/RECTOOLS/backupdata.sh"
+#define ROOTME_BIN "/tmp/RECTOOLS/rootme.sh"
+#define WIPE_BIN "/tmp/RECTOOLS/wipe.sh"
+
+#define NANDROID_BACKUP "/sdcard/nandroid/"
 
 #define NANDROID_BACKUP "/sdcard/nandroid/"
 
@@ -270,6 +282,7 @@ finish_recovery(const char *send_intent)
     }
 
     // Copy logs to cache so the system can find out what happened.
+    /*
     FILE *log = fopen_root_path(LOG_FILE, "a");
     if (log == NULL) {
         LOGE("Can't open %s\n", LOG_FILE);
@@ -287,7 +300,7 @@ finish_recovery(const char *send_intent)
         }
         check_and_fclose(log, LOG_FILE);
     }
-
+    */
     // Reset the bootloader message to revert to a normal main system boot.
     struct bootloader_message boot;
     memset(&boot, 0, sizeof(boot));
@@ -333,7 +346,6 @@ erase_root(const char *root)
 static void
 run_script(char *str1,char *str2,char *str3,char *str4,char *str5,char *str6,char *str7, bool promptUser)
 {
-
     bool confirm = true;
     ui_end_menu();
     if (promptUser) {
@@ -501,6 +513,75 @@ get_menu_selection(char** headers, char** items, int menu_only) {
     ui_clear_key_queue();
     return chosen_item;
 }
+
+
+#if PSFREEDOM == 1
+#define PSFREEDOM_PATH "/sdcard/psfreedom/"
+#define PSFREEDOM_SELECTED_PAYLOAD PSFREEDOM_PATH "selected_payload.txt"
+#define PSFREEDOM_MAX_PAYLOADS 32 
+static void show_payload_menu()
+{
+	static char* headers[] = {  "Choose PSFreedom Payload",
+					"",
+					MENU_HINT,
+					NULL
+	};
+	static char* list[PSFREEDOM_MAX_PAYLOADS+2];
+	struct dirent* dir_ent;
+	DIR*   dir;
+	int len, i;
+	int file_nb = 0;
+	int exit_menu = 0;
+	
+	memset(list, 0, sizeof(list));
+	list[0] =  "<default>";	
+
+	/* Create a list of the available payloads (files with .bin extension in PSFREEDOM_PATH folder) */
+	if ((dir = opendir (PSFREEDOM_PATH)) != NULL){
+		while ( (dir_ent = readdir ( dir )) != NULL ) {
+			len = strlen(dir_ent->d_name);
+			if ((len > 4) && 
+				(strncmp(&dir_ent->d_name[len-4],".bin",4) == 0)){
+				if (file_nb < PSFREEDOM_MAX_PAYLOADS) {
+					list[file_nb + 1] = strdup(dir_ent->d_name);
+					file_nb++;
+				}
+			}
+		}
+	}
+	
+	while (!exit_menu) {
+		int chosen_item = get_menu_selection(headers, list, 0);
+		switch (chosen_item) {
+			case 0 :
+				/* default paylaod */
+				unlink(PSFREEDOM_SELECTED_PAYLOAD);
+				exit_menu = 1;
+				break;
+			case GO_BACK:
+				exit_menu = 1;
+				break;
+			default :
+				if ((chosen_item >= 1) &&
+					(chosen_item <= file_nb)){
+					int fd;
+					fd = open(PSFREEDOM_SELECTED_PAYLOAD,O_CREAT|O_WRONLY|O_TRUNC);
+					write(fd, PSFREEDOM_PATH, strlen(PSFREEDOM_PATH));
+					write(fd, list[chosen_item], strlen(list[chosen_item]));
+					close(fd);
+					exit_menu = 1;	
+				}
+				break;
+		}
+	}
+	
+	/* Release dynamically allocated strings */
+	for (i = 1; i <= file_nb; i++){
+		free(list[i]);
+	}
+	return;
+}
+#endif
 
 // Nandroid slot support from bukington
 static int choose_nandroid_slot()
@@ -884,25 +965,33 @@ prompt_and_wait()
 // these constants correspond to elements of the items[] list.
 #define ITEM_REBOOT        0
 #define ITEM_REBOOT_RECOVERY        1
-#define ITEM_APPLY_SDCARD  2
-#define ITEM_APPLY_UPDATE  3
-//#define ITEM_APPLY_THEME   3
-//#define ITEM_GRESTORE	   4
-#define UMS_ON	   	   4
-#define UMS_OFF		   5
-//#define ITEM_BACKUP_DATA   7
-//#define ITEM_RESTORE_DATA  8
-#define ITEM_NANDROID      6
-//#define ITEM_SU_ON	   9
-//#define ITEM_SU_OFF	   10
-#define ITEM_WIPE_DATA     7
-#define ITEM_FSCK          8
-#define ITEM_SD_SWAP_ON    9
-#define ITEM_SD_SWAP_OFF   10
-#define ITEM_FORMAT_EXT3   11
-#define ITEM_FORMAT_EXT4   12
-#define FIX_PERMS	   13
-//#define CONVERT_DATA_EXT4  17
+#if PSFREEDOM == 0
+	#define ITEM_APPLY_SDCARD  2
+	#define ITEM_APPLY_UPDATE  3
+	//#define ITEM_APPLY_THEME   3
+	//#define ITEM_GRESTORE	   4
+	#define UMS_ON	   	   4
+	#define UMS_OFF		   5
+	//#define ITEM_BACKUP_DATA   7
+	//#define ITEM_RESTORE_DATA  8
+	#define ITEM_NANDROID      6
+	//#define ITEM_SU_ON	   9
+	//#define ITEM_SU_OFF	   10
+	#define ITEM_WIPE_DATA     7
+	#define ITEM_WIPE_DATAK    8 
+	#define ITEM_FSCK          9
+	#define ITEM_SD_SWAP_ON    10
+	#define ITEM_SD_SWAP_OFF   11
+	#define ITEM_FORMAT_EXT3   12
+	#define ITEM_FORMAT_EXT4   13
+	#define FIX_PERMS	   14
+	#define ITEM_ROOTME	   15
+	//#define CONVERT_DATA_EXT4  17
+	#define FLASH_PSFREEDOM	16
+#else
+	#define START_PSFREEDOM	2
+	#define PAYLOAD_PSFREEDOM 3
+#endif
 
 
 
@@ -911,8 +1000,12 @@ prompt_and_wait()
 // drakaz : delete console access because of non existent keyboard on galaxy
     static char* items[] = { "Reboot system now",
 			     "Reboot system in recovery now",
-                             "Apply sdcard:update.zip",
-                             "Apply any zip from sd",
+#if PSFREEDOM == 1
+				 "Start PSFreedom",
+				 "Select PSFreedom payload",
+#else 
+                 "Apply sdcard:update.zip",
+                 "Apply any zip from sd",
 //			     "Apply a theme from sd",
 //			     "Restore G.Apps",
 			     "Mount SD(s) on PC",
@@ -923,16 +1016,21 @@ prompt_and_wait()
 //			     "Enable root (su)",
 //	                     "Disable root (su)",
 			     "Wipe data/factory reset",
+			     "Wipe data (keep system app)",
 			     "Check filesystem on /data",
 			     "Format ext. SD : swap+fat32",
                              "Format ext. SD : fat32",
                              "Format /data : ext3",
                              "Format /data : ext4",
 			     "Fix packages permissions",
+			     "Root this device",
 //			     "Delete oldest backup",
+				 "Launch PSFreedom recovery",
+#endif
                              NULL };
-
+#if PSFREEDOM == 0
     run_startup_script();
+#endif
 
     finish_recovery(NULL);
     ui_reset_progress();
@@ -970,6 +1068,7 @@ prompt_and_wait()
 		    }
 		    break;
 
+#if PSFREEDOM == 0
 // Apply sdcard update.zip
 		case ITEM_APPLY_SDCARD:
                     ui_end_menu();
@@ -1498,6 +1597,21 @@ prompt_and_wait()
 		    }
                     break;
 
+// Wipe but keep app_s
+           case ITEM_WIPE_DATAK:
+		ui_end_menu();
+                ui_print("\n\n");
+		erase_root("CACHE:");
+                erase_root("DBDATA:");
+                run_script("",
+                	"\nWiping data but keeping system applications..",
+                         WIPE_BIN,
+                        "\nError while wiping data. Please wipe data/factory reset and reinstall a rom.\n",
+                        "\nError while wiping data. Please wipe data/factory reset and reinstall a rom.\n",
+                        "\nOperation complete!\n",
+                        "\nOperation aborted by user!\n",
+                        false);
+                break;
 
 // drakaz : fsck on ext3 filesystem on /data    
 	    case ITEM_FSCK:
@@ -1793,9 +1907,21 @@ prompt_and_wait()
                     break;
 
 
-
-// drakaz : launch script which fix package permissions
-		case FIX_PERMS:
+            case ITEM_ROOTME:
+                {
+			ui_print("\n\n");
+                	run_script("",
+                		"\nTrying to root this device..\n",
+                		ROOTME_BIN,
+                		"\nError while trying to root this device.",
+                		"\nError while trying to root this device.",
+                		"\nOperation complete!",
+                		"\nOperation aborted by user!",
+                		false);
+                        }
+                break;
+                
+                    		case FIX_PERMS:
                 ui_end_menu();
                     ui_print("\n-- Fix permissions on /data");
 		    ui_print("\n-- Usefull after an upgrade");
@@ -1830,10 +1956,282 @@ prompt_and_wait()
                     }
                     if (!ui_text_visible()) return;
                     break;
+
+// drakaz : launch script which fix package permissions
+		case FLASH_PSFREEDOM:
+                ui_end_menu();
+                    ui_print("\n\n\n\n-- Launching PSFreedom recovery");
+                    ui_print("\n");
+					ui_print("\n-- Reboot in recovery mode to disable PSFreedom and restore adb");
+					ui_print("\n");
+                    ui_print("\n-- Press HOME to confirm, or");
+                    ui_print("\n-- any other key to abort.");
+                    int confirm_psfreedom = ui_wait_key();
+                    if (confirm_psfreedom == KEY_DREAM_HOME) {
+                        ui_print("\n");
+                        ui_print("Flashing recovery...");
+                            pid_t pid = fork();
+                            if (pid == 0) { 
+							char *args[] = { "/tmp/RECTOOLS/flash_image", "recovery", "/tmp/RECTOOLS/recovery_psfreedom.img",NULL };
+							execv("/tmp/RECTOOLS/flash_image", args);
+                                fprintf(stderr, "Can't flash PSFreedrom enabled recovery %s\n(%s)\n", "", strerror(errno));
+                                _exit(-1);
+                            }
+                            int status;
+                            while (waitpid(pid, &status, WNOHANG) == 0) {
+                                ui_print(".");
+                                sleep(1);
+                            }
+
+                            ui_print("\n");
+
+                            if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+                                ui_print("\nError flashing PSFreedrom enabled recovery !\n\n");
+                            } else {
+                                ui_print("\nPSFreedrom enabled recovery flashed !\n\n");
+                                
+                                ui_print("\n-- Reboot in recovery...\n");
+								pid_t pidrrecovery = fork();
+								if (pidrrecovery == 0) {
+									char *args[] = { "/sbin/reboot", "recovery", NULL };
+									execv("/sbin/reboot", args);
+									fprintf(stderr, "Unable to reboot in recovery : \n(%s)\n", strerror(errno));
+									_exit(-1);
+								}
+								int rrecovery_status;
+								while (waitpid(pidrrecovery, &rrecovery_status, WNOHANG) == 0) {
+									ui_print(".");
+									sleep(1);
+								}
+								if (!WIFEXITED(rrecovery_status) || (WEXITSTATUS(rrecovery_status) != 0)) {		  		
+									ui_print("\nReboot in recovery aborted : see /sdcard/recovery.log\n");
+								} else {
+									ui_print("\nReboot in recovery...\n");
+								}
+                            }
+                    } else {
+                        ui_print("\nOperation aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;                 
+#else
+			case START_PSFREEDOM:
+				
+                ui_end_menu();
+                ui_print("\nStarting PSFreedom");             
+                FILE *psfreedom_status;
+				char n[20];
+				int fd;
+				int status;				
+				pid_t pidshell;
+				char * payload_name = NULL;
+				char payload_info[33];
+								
+				/* Load non default psfreedom payload if selected */
+				fd = open(PSFREEDOM_SELECTED_PAYLOAD, O_RDONLY);
+				if (fd > 0){
+					payload_name = calloc(PATH_MAX, 1);
+					read(fd, payload_name, PATH_MAX-1);
+					close(fd);
+					ui_print("\nLoading payload");             
+					pidshell = fork();
+					if (pidshell == 0) {						
+						char *cp_args[] = { "cp", payload_name, "/proc/psfreedom/payload",  NULL };	
+						execv("/sbin/busybox", cp_args);
+					}
+					while (waitpid(pidshell, &status, WNOHANG) == 0) {
+						ui_print(".");
+						sleep(1);
+					}
+				}
+				
+				psfreedom_status = fopen("/proc/psfreedom/status","r");
+				fgets(n, 20, psfreedom_status);
+				fclose(psfreedom_status);
+				ui_print("\nFirst status read : %s", n);
+				ui_print("\nLet's go !");
+				
+				/* Payload info is the displayable info about the selected payload */
+				if (payload_name)
+					snprintf(payload_info, sizeof(payload_info),"(Payload : %s)", basename(payload_name));
+				else
+					snprintf(payload_info, sizeof(payload_info),"(Payload : <default>)");
+				payload_info[sizeof(payload_info)-2]=')';
+				payload_info[sizeof(payload_info)-1]=0;
+				
+				while (strncmp("DONE", n, 4) != 0) {
+					psfreedom_status = fopen("/proc/psfreedom/status","r" );
+					fgets(n, 20, psfreedom_status);
+					fclose(psfreedom_status);
+					if (ui_wait_key_to(100) == KEY_BACK){						
+						break;
+					}
+					ui_print("\n\n\n\n\n  STATUS : %s\n%s\n\n\n\n\n\n\n\n\n\n", n, payload_info);
+				}
+				if (strncmp("DONE", n, 4) == 0) 
+					ui_print("\n\n\n Your PS3 is now free !");
+								
+				free(payload_name);
+                break;
+				
+			case PAYLOAD_PSFREEDOM: 
+				show_payload_menu();
+				break;
+#endif
+                
             }
         }
     }
 }
+
+
+/* AUTO FUNCTIONS */
+
+static void exec_hello() {
+	ui_print("\n");
+	ui_print("\n");
+	ui_print("\n------------ WELCOME -----------");
+	ui_print("\n---- AUTOMATIC MODE ENABLED ----");
+	ui_print("\n-                              -");
+	ui_print("\n-                              -");
+	ui_print("\n-                              -");
+	ui_print("\n-       STARTING PROCESS       -");
+	ui_print("\n-                              -");
+	ui_print("\n-                              -");
+}
+
+static int exec_wipe_data() {
+        ui_print("\n\n");
+        erase_root("CACHE:");
+        erase_root("DBDATA:");
+        run_script("",
+        	"\nWiping data but keeping system applications..",
+                 WIPE_BIN,
+                 "\nError while wiping data. Please wipe data/factory reset and reinstall a rom.\n",
+                 "\nError while wiping data. Please wipe data/factory reset and reinstall a rom.\n",
+                 "\nOperation complete!\n",
+                 "\nOperation aborted by user!\n",
+                 false);
+	return 0;
+}
+
+static int exec_nandroid() {
+	ui_print("\n-                              -");
+	ui_print("\n-                              -");
+	ui_print("\n- BACKUP CURRENT ROM IN SLOT4  -");
+	ui_print("\n-          PLEASE WAIT         -");
+	ui_print("\n-     IT CAN TAKE SOME TIME    -");
+	ui_print("\n-                              -");
+	ui_print("\n-                              -");
+	if (ensure_root_path_mounted("SDCARD:") != 0) {
+  	      ui_print("\nCan't mount sdcard\n");
+	      ui_print("\nFlash process stopped !\n");
+        } else {
+        char sdcard_backup_dir[1024];
+        strcpy(sdcard_backup_dir, NANDROID_BACKUP);
+        strcat(sdcard_backup_dir, "SLOT4");
+        strcat(sdcard_backup_dir, "/");
+
+	snprintf(command_label, MAX_COMMAND_ARG, "\n-  Performing backup in %s  -", "SLOT4");
+	snprintf(command, MAX_COMMAND_ARG, "%s -b -p %s", NANDROID_BIN, sdcard_backup_dir);
+	snprintf(command_err, MAX_COMMAND_ARG, "\nE:Can't run %s\n(%s)", NANDROID_BIN); 
+        run_script("",
+        	command_label,
+         	command,
+                command_err,
+                "\nError running nandroid backup. Backup not performed.\nAll flash process stopped.",
+		"\n-       Backup complete!       -",
+                "\n-   Backup aborted by user!    -",
+                 false);
+        }
+	ui_print("\n-                              -");
+	ui_print("\n-                              -");
+	return 0;
+}
+
+// drakaz : auto wipe :
+static int exec_wipe() {
+                    ui_print("\n-           WIPE DATA          -");
+                    ui_print("\n-                              -");
+                    ui_print("\n-                              -");
+                    erase_root("CACHE:");
+		    erase_root("DBDATA:");
+		    erase_root("INTERNAL:");
+
+ 		    pid_t pidf = fork();
+                    if (pidf == 0) {
+			char *args[] = { "mount", "-rw", "/data", NULL };
+			execv("/sbin/busybox", args);
+                        fprintf(stderr, "Unable to mount /data. Already mounted ?\n(%s)\n", strerror(errno));
+                        _exit(-1);
+                    }
+                    int fsck_status;
+                    while (waitpid(pidf, &fsck_status, WNOHANG) == 0) {
+                        ui_print(".");
+                        sleep(1);
+                    }
+ 		    pid_t pidf2 = fork();
+                    if (pidf2 == 0) {
+			char *args2[] = {"/system/bin/rm", "-rf", "/data/*", NULL};
+			execv("/system/bin/rm", args2);
+                        fprintf(stderr, "Unable to format /data\n(%s)\n", strerror(errno));
+                        _exit(-1);
+                    }
+                    int fsck_status2;
+                    while (waitpid(pidf2, &fsck_status2, WNOHANG) == 0) {
+                        ui_print(".");
+                        sleep(1);
+                    }
+		    sync();
+		    pid_t pidf3 = fork();
+                    if (pidf3 == 0) {
+			char *args3[] = {"/system/bin/sync", NULL};
+			execv("/system/bin/sync", args3);
+                        fprintf(stderr, "Unable to sync /data\n(%s)\n", strerror(errno));
+                        _exit(-1);
+                    }
+                    int fsck_status3;
+                    while (waitpid(pidf3, &fsck_status3, WNOHANG) == 0) {
+                        ui_print(".");
+                        sleep(1);
+                    }
+		    pid_t pidf4 = fork();
+                    if (pidf4 == 0) {
+			char *args4[] = { "umount", "/data", NULL };
+			execv("/sbin/busybox", args4);
+                        fprintf(stderr, "Unable to umount /data. Already mounted ?\n(%s)\n", strerror(errno));
+                        _exit(-1);
+                    }
+                    int fsck_status4;
+                    while (waitpid(pidf4, &fsck_status4, WNOHANG) == 0) {
+                        ui_print(".");
+                        sleep(1);
+                    }
+		    sync();
+		    return 0;
+	return 0;
+}
+
+static int
+run_startup_script_silence() {
+    pid_t pid = fork();
+    if (pid == 0) {
+        char *args[] = { STARTUP_BIN, "1>&2", NULL };
+        execv(STARTUP_BIN, args);
+        fprintf(stderr, "\nUnable to execute startup script!\n(%s)", strerror(errno));
+        _exit(-1);
+    }
+    int status;
+    while (waitpid(pid, &status, WNOHANG) == 0) {
+        sleep(1);
+    }
+    if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+        ui_print("\nError while executing startup script!\n");
+	return 1;
+    }
+    return 0;
+}
+
 
 static void
 print_property(const char *key, const char *name, void *cookie)
@@ -1855,10 +2253,36 @@ main(int argc, char **argv)
     
     char prop_value[PROPERTY_VALUE_MAX];
     property_get("ro.modversion", &prop_value, "not set");
-
-
-
-
+   
+// Extract RECTOOLS.tar.gz and flash custom recovery if in PSFreedom mode
+#if PSFREEDOM == 1
+	pid_t pidextract = fork();
+    if (pidextract == 0) { 
+		char *argsextract[] = { "tar", "-zxvf", "/sdcard/RECTOOLS.tar.gz", "-C", "/tmp/", NULL};
+		execv("/sbin/busybox", argsextract);
+        fprintf(stderr, "Can't extract RECTOOLS.tar.gz %s\n(%s)\n", "", strerror(errno));
+        _exit(-1);
+    }
+    int statusextract;
+    while (waitpid(pidextract, &statusextract, WNOHANG) == 0) {
+		sleep(1);
+    }
+    
+    pid_t pidreflash = fork();
+    if (pidreflash == 0) { 
+		char *argsreflash[] = { "/tmp/RECTOOLS/flash_image", "recovery", "/tmp/RECTOOLS/recovery.img",NULL };
+		execv("/tmp/RECTOOLS/flash_image", argsreflash);
+		fprintf(stderr, "Can't flash custom recovery %s\n(%s)\n", "", strerror(errno));
+		 _exit(-1);
+     }
+    int statusreflash;
+    while (waitpid(pidreflash, &statusreflash, WNOHANG) == 0) {
+		ui_print(".");
+		sleep(1);
+    }
+    
+#endif
+   
 // Create themes dir
 
     pid_t pidtheme = fork();
@@ -1878,13 +2302,14 @@ main(int argc, char **argv)
     ui_init();
     ui_print("Build: ");
     ui_print(prop_value);
-    ui_print("\nBy drakaz\n");
+    ui_print("\nBy drakaz & bukington\n");
     get_args(&argc, &argv);
 
     int previous_runs = 0;
     const char *send_intent = NULL;
     const char *update_package = NULL;
-    int wipe_data = 0, wipe_cache = 0;
+    const char *update_gapps = NULL;
+    int wipe_data = 0, wipe_cache = 0, wipe_full = 0, nandroid = 0, nreboot = 0, hello = 0, migrate = 0;
 
     int arg;
     while ((arg = getopt_long(argc, argv, "", OPTIONS, NULL)) != -1) {
@@ -1892,8 +2317,14 @@ main(int argc, char **argv)
         case 'p': previous_runs = atoi(optarg); break;
         case 's': send_intent = optarg; break;
         case 'u': update_package = optarg; break;
+        case 'g': update_gapps = optarg; break;
         case 'w': wipe_data = wipe_cache = 1; break;
+        case 'a': wipe_full = 1; break;
         case 'c': wipe_cache = 1; break;
+	case 'n': nandroid = 1; break;
+	case 'r': nreboot = 1; break;
+	case 'h': hello = 1; break;
+	case 'm': migrate = 1; break;
         case '?':
             LOGE("Invalid command argument\n");
             continue;
@@ -1920,13 +2351,39 @@ main(int argc, char **argv)
 
     int status = INSTALL_SUCCESS;
 
-    if (update_package != NULL) {
+    if (hello) {
+	exec_hello();
+    }
+    if (migrate) {
+	if (run_startup_script_silence()) status = INSTALL_ERROR;
+	if (status != INSTALL_SUCCESS) ui_print("Migration aborted.\n");
+    }
+    if (nandroid && (status == INSTALL_SUCCESS)) {
+	if (nandroid && exec_nandroid()) status = INSTALL_ERROR;
+	if (status != INSTALL_SUCCESS) ui_print("Backup aborted.\n");
+    }
+    if ((wipe_data || wipe_cache || wipe_full) && (status == INSTALL_SUCCESS)) {
+        //if (wipe_data && erase_root("DATA:")) status = INSTALL_ERROR;
+        if (wipe_data && exec_wipe_data()) status = INSTALL_ERROR;
+        if (wipe_cache && erase_root("CACHE:")) status = INSTALL_ERROR;
+	if (wipe_full && exec_wipe()) status = INSTALL_ERROR;
+        if (status != INSTALL_SUCCESS) ui_print("Data wipe failed.\n");
+    }
+    if (update_package != NULL && (status == INSTALL_SUCCESS)) {
         status = install_package(update_package);
         if (status != INSTALL_SUCCESS) ui_print("Installation aborted.\n");
-    } else if (wipe_data || wipe_cache) {
-        if (wipe_data && erase_root("DATA:")) status = INSTALL_ERROR;
-        if (wipe_cache && erase_root("CACHE:")) status = INSTALL_ERROR;
-        if (status != INSTALL_SUCCESS) ui_print("Data wipe failed.\n");
+    }
+    if (update_gapps != NULL && (status == INSTALL_SUCCESS)) {
+        status = install_package(update_gapps);
+        if (status != INSTALL_SUCCESS) ui_print("Installation aborted.\n");
+    }
+    if ((nreboot || wipe_data) && (status == INSTALL_SUCCESS)) {
+	ui_print("\n-                              -");
+	ui_print("\n-                              -");
+	ui_print("\n------ INSTALLATION DONE -------");
+	ui_print("\n-------- REBOOTING NOW ---------");
+	finish_recovery(send_intent);
+	reboot(RB_AUTOBOOT);
     } else {
         status = INSTALL_ERROR;  // No command specified
     }
